@@ -126,6 +126,22 @@ def load_multimodal_content(file_path):
     if ext in (".pdf", ".docx", ".txt", ".md"):
         if ext == ".pdf":
             content["texts"] = extract_text_from_pdf(file_path)
+            from app.config import USE_OCR, OCR_ENGINE
+            if USE_OCR and not content["texts"]:
+                from app.ingestion.ocr_engine import is_scanned_pdf, ocr_pdf_page
+                if is_scanned_pdf(file_path):
+                    print(f"  Scanned PDF detected, running OCR ({OCR_ENGINE})...")
+                    import fitz
+                    doc = fitz.open(file_path)
+                    for page_num in range(len(doc)):
+                        page = doc.load_page(page_num)
+                        text = ocr_pdf_page(page, engine=OCR_ENGINE)
+                        if text.strip():
+                            content["texts"].append(
+                                _record(page_num + 1, text.strip(), file_path, "pdf", "text")
+                            )
+                    doc.close()
+                    print(f"  OCR extracted {len(content['texts'])} pages")
         elif ext == ".docx":
             content["texts"] = extract_text_from_docx(file_path)
         elif ext in (".txt", ".md"):

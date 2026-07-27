@@ -11,7 +11,7 @@ import sys
 import time
 
 
-def generate_synthetic_questions(chunks, num_pairs=30):
+def generate_synthetic_questions(chunks, num_pairs=50):
     """Use Mistral to generate QA pairs from retrieved chunks."""
     from app.llm.local_llm import llm
 
@@ -65,7 +65,7 @@ def main():
     print("Generating synthetic QA pairs from ingested documents...")
 
     from app.config import BASE_DIR, REPORTS_DIR
-    from app.vectorstore.chroma_store import get_collection
+    from app.vectorstore import get_collection
 
     collection = get_collection()
     all_data = collection.get(include=["documents", "metadatas"])
@@ -75,9 +75,9 @@ def main():
         for doc, meta in zip(all_data["documents"], all_data["metadatas"])
     ]
 
-    print(f"Loaded {len(chunks)} chunks from ChromaDB")
+    print(f"Loaded {len(chunks)} chunks from PostgreSQL")
 
-    dataset = generate_synthetic_questions(chunks, num_pairs=30)
+    dataset = generate_synthetic_questions(chunks, num_pairs=50)
 
     output_path = os.path.join(REPORTS_DIR, "synthetic_dataset.json")
     os.makedirs(REPORTS_DIR, exist_ok=True)

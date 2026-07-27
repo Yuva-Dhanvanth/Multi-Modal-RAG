@@ -16,7 +16,7 @@ def _tokenize(text):
 def load_corpus_from_chromadb():
     global _corpus_texts, _corpus_ids, _corpus_metadatas, _bm25
 
-    from app.vectorstore.chroma_store import get_collection
+    from app.vectorstore import get_collection
 
     collection = get_collection()
     all_data = collection.get(include=["documents", "metadatas"])

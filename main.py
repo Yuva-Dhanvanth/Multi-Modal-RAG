@@ -8,24 +8,14 @@ def run_ingestion():
     from app.ingestion.document_loader import load_document, load_multimodal_content
     from app.chunking.chunker import chunk_documents
     from app.embeddings.embedder import generate_embeddings, model as embed_model
-    from app.vectorstore.chroma_store import store_chunks, store_image_chunks, client, get_collection, get_image_collection
+    from app.vectorstore import store_chunks, store_image_chunks, get_collection, get_image_collection, clear_collections
     from app.config import DOCUMENTS_DIR
 
     print("=" * 60)
     print("INGESTION FLOW")
     print("=" * 60)
 
-    try:
-        client.delete_collection("text_chunks")
-        print("Cleared existing text collection.")
-    except Exception:
-        pass
-    try:
-        client.delete_collection("image_chunks")
-        print("Cleared existing image collection.")
-    except Exception:
-        pass
-
+    clear_collections()
     get_collection()
     get_image_collection()
 
@@ -91,7 +81,7 @@ def run_ingestion():
         print("Generating embeddings...")
         embedded_chunks = generate_embeddings(all_chunks)
         embeddings = [chunk["embedding"] for chunk in embedded_chunks]
-        print("Storing in ChromaDB...")
+        print("Storing in PostgreSQL...")
         store_chunks(all_chunks, embeddings)
 
     # Store image chunks (with captions)
@@ -109,7 +99,7 @@ def run_ingestion():
                 img["text_embedding"] = emb.tolist()
             else:
                 img["text_embedding"] = None
-        print("Storing image chunks in ChromaDB...")
+        print("Storing image chunks in PostgreSQL...")
         store_image_chunks(all_image_chunks)
 
     print("\nIngestion completed successfully!")
@@ -176,7 +166,7 @@ def main():
     parser = argparse.ArgumentParser(description="Multimodal RAG CLI tool")
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
-    subparsers.add_parser("ingest", help="Ingest files from data/documents into ChromaDB")
+    subparsers.add_parser("ingest", help="Ingest files from data/documents into PGVector")
 
     query_parser = subparsers.add_parser("query", help="Query the RAG pipeline")
     query_parser.add_argument(

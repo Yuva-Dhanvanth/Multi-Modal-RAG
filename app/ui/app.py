@@ -42,7 +42,7 @@ with st.sidebar:
     st.divider()
     st.subheader("Database Stats")
     try:
-        from app.vectorstore.chroma_store import get_collection, get_image_collection
+        from app.vectorstore import get_collection, get_image_collection
         tc = get_collection().count()
         ic = get_image_collection().count()
         st.metric("Text/Table chunks", tc)

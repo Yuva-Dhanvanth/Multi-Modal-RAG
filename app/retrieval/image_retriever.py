@@ -1,5 +1,5 @@
 from app.embeddings.embedder import embed_text
-from app.vectorstore.chroma_store import get_image_collection
+from app.vectorstore import get_image_collection
 
 
 def retrieve_images(query, top_k=5):

@@ -2,7 +2,7 @@ from app.config import RRF_WEIGHT_BM25, RRF_WEIGHT_DENSE, TOP_K_HYBRID, TOP_K_RE
 from app.embeddings.embedder import embed_text
 from app.retrieval.bm25_retriever import retrieve as bm25_retrieve
 from app.retrieval.bm25_retriever import load_corpus_from_chromadb
-from app.vectorstore.chroma_store import get_collection
+from app.vectorstore import get_collection
 
 
 def _rrf(ranked_lists, weights, k=60):

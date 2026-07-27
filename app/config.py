@@ -4,7 +4,6 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Paths
 DOCUMENTS_DIR = os.path.join(BASE_DIR, "data", "documents")
-CHROMA_DIR = os.path.join(BASE_DIR, "data", "chroma_db")
 IMAGES_DIR = os.path.join(BASE_DIR, "data", "images")
 MODELS_DIR = os.path.join(BASE_DIR, "models")
 REPORTS_DIR = os.path.join(BASE_DIR, "reports")
@@ -54,3 +53,10 @@ LLM_N_THREADS = 8
 LLM_N_GPU_LAYERS = 0
 LLM_MAX_TOKENS = 300
 LLM_TEMPERATURE = 0.2
+
+# PostgreSQL / PGVector connection
+PG_HOST = os.getenv("PG_HOST", "localhost")
+PG_PORT = int(os.getenv("PG_PORT", "5432"))
+PG_DB = os.getenv("PG_DB", "multimodal_rag")
+PG_USER = os.getenv("PG_USER", "postgres")
+PG_PASSWORD = os.getenv("PG_PASSWORD", "")
