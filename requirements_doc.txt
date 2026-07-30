@@ -1,0 +1,507 @@
+Multimodal RAG System (Fully Local) – Project Requirements Document
+Project Overview
+Objective
+Develop a fully local Multimodal Retrieval-Augmented Generation (RAG) System capable of understanding and answering questions from:
+Text documents
+Images
+Tables
+The entire solution must run offline using locally hosted models and local storage without any dependency on external APIs.
+Key Constraints
+All models must run locally.
+Only GGUF-based LLMs are permitted.
+No OpenAI, Claude, Gemini, Cohere, or other cloud APIs.
+Retrieval, embedding generation, reranking, and evaluation must be executed locally.
+The system should work on consumer-grade hardware.
+Prioritize response speed and answer accuracy.
+
+1. System Modalities
+Modality
+Input Formats
+Processing Tool
+Output
+Text
+PDF, TXT, MD, DOCX 
+PyMuPDF, Unstructured, Docling
+Text chunks + embeddings
+Image
+PNG, JPG, JPEG, Images inside PDFs
+CLIP ViT-B/32
+Visual embeddings
+Table
+CSV, XLSX, HTML Tables, PDF Tables
+Camelot, Pandas
+Serialized textual representation
+
+2. What You Will Build
+A. Document Ingestion Module
+Responsibilities:
+Parse PDFs
+Parse DOCX files
+Extract tables
+Extract images
+Chunk extracted content
+Generate embeddings
+Store embeddings locally
+Output:
+Local vector database
+Metadata store
+Searchable document repository
+
+B. Hybrid Retrieval Engine
+Responsibilities:
+Dense Retrieval
+Vector similarity search using embeddings.
+Sparse Retrieval
+Keyword retrieval using BM25.
+Hybrid Fusion
+Combine results from:
+BM25
+Dense Vector Search
+using:
+Reciprocal Rank Fusion (RRF)
+
+C. Local LLM Answer Generation
+Responsibilities:
+Accept retrieved context
+Build prompt
+Generate grounded answers
+Stream responses
+Using:
+llama-cpp-python
+GGUF models
+
+D. Evaluation Framework
+Responsibilities:
+Measure:
+Faithfulness
+Relevance
+Context Recall
+Context Precision
+Correctness
+Latency
+Using:
+Offline RAGAS
+
+3. Recommended Technology Stack
+LLM Runtime
+Required
+llama-cpp-python
+Why:
+Runs GGUF models
+CPU compatible
+Supports GPU offloading
+
+LLM Model
+Required
+Mistral-7B-Q4_K_M.gguf
+Characteristics:
+~4.1 GB
+4-bit quantized
+Good quality-to-speed ratio
+Works well on CPU
+
+Embedding Models
+Required
+nomic-embed-text-v1.5
+Specifications:
+768 dimensions
+Local inference
+Strong retrieval quality
+Alternative:
+sentence-transformers
+
+Vector Database
+Required
+PGVector in Postgres SQL
+Requirements:
+Persistent storage
+Local execution
+No external infrastructure
+
+Sparse Retrieval
+Recommended
+rank-bm25you can go for anything else also
+Purpose:
+Keyword matching
+Hybrid retrieval
+
+Reranker
+Recommended(it might take time in retrieval you can keep it optional) 
+cross-encoder/ms-marco-MiniLM-L-6-v2
+Size:
+~80 MB
+Benefits:
+Typically improves context precision by 15–20%
+Significant answer quality boost
+
+Document Parsing
+Required
+PyMuPDFdoclingunstructured
+Capabilities:
+PDF extraction
+Layout understanding
+Table detection
+Image extraction
+
+Image Encoding
+Required
+CLIP ViT-B/32
+Purpose:
+Image embeddings
+Image retrieval
+
+OCR
+Choose one:
+Tesseract OCR
+or
+EasyOCR
+Use when:
+PDFs are scanned
+Text exists only in images
+
+Orchestration Layer
+Recommended
+Custom pipeline implementation.
+
+API Layer
+Recommended
+FastAPI
+Purpose:
+REST APIs
+Streaming responses
+Async support
+
+Evaluation
+Recommended
+RAGAS (Offline Mode)
+Purpose:
+Retrieval evaluation
+Generation evaluation
+
+4. Multimodal RAG Pipeline
+Phase 1: Offline Ingestion Pipeline
+
+Stage 1: Document Loading
+Input:
+PDFs
+DOCX
+Images
+Tables
+Tasks:
+Extract text blocks
+Extract images
+Extract tables
+Store metadata
+Metadata:
+{  "page_number": 4,  "modality": "text"}
+Tools:
+PyMuPDF
+Unstructured
+Camelot
+docling
+
+Stage 2: Chunking
+Text
+Configuration (try your own config)
+chunk_size = 512chunk_overlap = 64
+Method:
+Recursive Character SplitterSemantic Chunker 
+Tables
+Convert rows to text:
+Column1: Value1Column2: Value2
+Images
+Store:
+File path
+Metadata
+Caption 
+
+Stage 3: Embedding Generation
+Text
+Model:
+nomic-embed-text
+Output:
+768-dimensional vectors or less than it
+Images
+Model:
+CLIP ViT-B/32
+Output:
+512-dimensional vectors
+
+Stage 4: Indexing
+Store:
+Text Collection
+text_chunks
+Image Collection
+image_chunks
+Additionally:
+Build BM25 index over text corpus.
+Persist all indexes locally.
+
+Phase 2: Online Query Pipeline (Not Required For NOW)
+
+Stage 5: Query Embedding & Routing
+Generate query embedding.
+Determine query type:
+Text query
+Image query
+Mixed query
+Route accordingly.
+
+Stage 6: Hybrid Retrieval
+Dense Search
+Retrieve:
+Top 20 vector matches
+Sparse Search
+Retrieve:
+Top 20 BM25 matches
+Fusion
+Use:
+Reciprocal Rank Fusion (RRF)
+Suggested weights:
+Dense = 0.6BM25 = 0.4
+
+Stage 7: Reranking
+Input:
+Merged top 20 results
+Model:
+ms-marco-MiniLM-L-6-v2
+Output:
+Top 5 contexts
+This stage provides the largest single accuracy improvement and is mandatory.
+
+Stage 8: Context Assembly & Generation
+Build final prompt:
+System Prompt+Retrieved Chunks+Image Captions+User Query
+Run inference through:
+llama-cpp-python
+Using:
+Mistral-7B-Q4_K_M.gguf
+Return generated answer.
+
+5. Image Retrieval Strategy
+Baseline
+Use:
+CLIP embeddings
+for image search.
+Limitation
+CLIP-only retrieval often produces noisy results.
+
+Recommended Improvement
+Add:
+BLIP Captioning
+during ingestion.
+Process:
+Image↓BLIP Caption↓Store Caption↓Embed Caption
+Benefits:
+Better retrieval quality
+Text-searchable image content
+Simpler than pure visual matching
+
+6. Hardware Requirements
+Minimum
+Resource
+Requirement
+RAM
+8 GB
+Storage
+15 GB
+CPU
+4-core x86-64 / ARM64
+
+Recommended
+Resource
+Requirement
+RAM
+16 GB
+Storage
+30 GB
+CPU
+Modern 6+ Core Processor
+
+GGUF Model Guide
+Model
+Quant
+Size
+RAM Needed
+CPU Speed
+Phi-3 Mini 4K
+Q4_K_M
+2.2 GB
+4 GB
+~25 tok/s
+Llama 3.2 3B
+Q4_K_M
+1.9 GB
+3.5 GB
+~30 tok/s
+Mistral 7B
+Q4_K_M
+4.1 GB
+6 GB
+~15 tok/s
+Llama 3 8B
+Q4_K_M
+4.6 GB
+7 GB
+~12 tok/s
+Mistral 7B
+Q8_0
+7.7 GB
+10 GB
+~8 tok/s
+
+Additional Models
+Model
+Size
+nomic-embed-text-v1.5
+274 MB
+CLIP ViT-B/32
+338 MB
+ms-marco-MiniLM-L-6-v2
+80 MB
+BLIP Base
+935 MB
+
+Optional GPU Acceleration
+For NVIDIA users:
+CUDA-enabled llama.cpp
+GPU layer offloading
+Faster generation speeds
+Lower latency
+
+7. Evaluation Framework
+Metric 1: Faithfulness
+Question:
+Does the answer contain only facts from retrieved context?
+Target:
+≥ 0.85
+
+Metric 2: Answer Relevance
+Question:
+Does the answer address the user’s query?
+Target:
+≥ 0.80
+
+Metric 3: Context Precision
+Question:
+How much retrieved context was actually useful?
+Target:
+≥ 0.75
+
+Metric 4: Context Recall
+Question:
+Were all required chunks retrieved?
+Target:
+≥ 0.70
+
+Metric 5: Answer Correctness
+Question:
+Is the final answer factually correct?
+Target:
+≥ 0.75
+
+Metric 6: Latency
+Target:
+Metric
+Goal
+Query → First Token
+< 3 sec
+Full Response
+< 20 sec
+
+8. Running RAGAS Completely Offline
+Normally:
+RAGAS → OpenAI Judge
+For this project:
+RAGAS → Local Mistral Judge
+Implementation:
+Create LangChain wrapper around llama-cpp.
+Pass wrapper into RAGAS.
+Build evaluation dataset.
+Run offline evaluation.
+Note:
+Scores will be noisier than GPT-4 evaluation but are reliable enough for comparing retrieval strategies.
+
+9. Test Dataset Strategy
+Track A: Synthetic Dataset
+Generate:
+50–100 QA pairs
+Using:
+Local GGUF model
+Purpose:
+Rapid baseline testing.
+
+Track B: Manual Golden Dataset
+Create:
+20–30 verified QA pairs
+Purpose:
+Final accuracy measurement.
+
+Track C: Ablation Experiments
+Evaluate:
+Experiment 1
+Dense Retrieval Only
+Experiment 2
+BM25 Only
+Experiment 3
+Hybrid Retrieval
+Experiment 4
+Hybrid Retrieval + Reranker
+Compare all results.
+
+Note: This timeline is just to understand the flow of follow your own timeline as discussed in the meeting
+10. Project Timeline (4 Weeks)
+Week 1 — Text RAG Baseline
+Tasks:
+Install dependencies
+Download models
+Build text ingestion
+Chunk documents
+Generate embeddings
+ChromaDB integration
+Local answer generation
+Deliverable:
+Working Text RAG + Initial Evaluation
+
+Week 2 — Hybrid Retrieval
+Tasks:
+BM25 implementation
+RRF Fusion
+Reranker integration
+Evaluation comparison
+Deliverable:
+Dense vs Hybrid vs Hybrid + Rerank Report
+
+Week 3 — Multimodal Support
+Tasks:
+Image embeddings
+Table extraction
+Image retrieval
+Cross-modal search
+BLIP captioning integration
+Deliverable:
+Multimodal Retrieval Demo
+
+Week 4 — Productionization
+Tasks:
+FastAPI integration
+API endpoints
+Streaming responses
+Complete RAGAS evaluation
+Documentation
+Deliverable:
+Runnable API
+Evaluation Report
+Deployment Guide
+Final Demonstration
+
+Success Criteria
+The project is considered successful when:
+Runs fully offline.
+Uses GGUF models only.
+Supports text, image, and table retrieval.
+Implements hybrid retrieval.
+Includes reranking.
+Achieves target evaluation metrics.
+Exposes FastAPI endpoints.
+Produces a final evaluation report with ablation analysis.

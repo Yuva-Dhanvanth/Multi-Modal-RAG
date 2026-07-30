@@ -11,13 +11,41 @@ from app.config import PG_HOST, PG_PORT, PG_DB, PG_USER, PG_PASSWORD, TOP_K
 
 
 def _get_conn():
-    return psycopg2.connect(
+    conn = psycopg2.connect(
         host=PG_HOST,
         port=PG_PORT,
         dbname=PG_DB,
         user=PG_USER,
         password=PG_PASSWORD,
     )
+    with conn.cursor() as cur:
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS text_chunks (
+            id SERIAL PRIMARY KEY,
+            chunk_id TEXT UNIQUE,
+            document TEXT,
+            page INT,
+            source TEXT,
+            format TEXT,
+            modality TEXT,
+            embedding FLOAT8[]
+        );
+        CREATE TABLE IF NOT EXISTS image_chunks (
+            id SERIAL PRIMARY KEY,
+            image_id TEXT UNIQUE,
+            caption TEXT,
+            source TEXT,
+            page INT,
+            format TEXT,
+            modality TEXT,
+            image_path TEXT,
+            width INT,
+            height INT,
+            embedding FLOAT8[]
+        );
+        """)
+    conn.commit()
+    return conn
 
 
 def _cosine_similarity(a, b):

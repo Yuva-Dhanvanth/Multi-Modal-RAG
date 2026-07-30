@@ -31,8 +31,32 @@ with st.sidebar:
     top_k = st.slider("Top-K chunks", min_value=1, max_value=10, value=5)
 
     st.divider()
+    st.subheader("📁 Upload Documents")
+    uploaded_files = st.file_uploader(
+        "Upload PDF, DOCX, TXT, Images",
+        type=["pdf", "docx", "txt", "md", "csv", "xlsx", "png", "jpg", "jpeg"],
+        accept_multiple_files=True,
+    )
+    if uploaded_files:
+        from app.config import DOCUMENTS_DIR
+        os.makedirs(DOCUMENTS_DIR, exist_ok=True)
+        saved_count = 0
+        for uploaded_file in uploaded_files:
+            target_path = os.path.join(DOCUMENTS_DIR, uploaded_file.name)
+            with open(target_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            saved_count += 1
+        st.success(f"Saved {saved_count} file(s) to data/documents/")
+        if st.button("🚀 Ingest Uploaded Files", type="primary", use_container_width=True):
+            with st.spinner("Ingesting and embedding documents into PostgreSQL..."):
+                from main import run_ingestion
+                run_ingestion()
+            st.success("Ingestion complete!")
+            st.rerun()
+
+    st.divider()
     st.subheader("System")
-    if st.button("🔄 Re-ingest documents", type="secondary", use_container_width=True):
+    if st.button("🔄 Re-ingest existing documents", type="secondary", use_container_width=True):
         with st.spinner("Ingesting..."):
             from main import run_ingestion
             run_ingestion()
@@ -98,7 +122,7 @@ if prompt := st.chat_input("Ask a question about your documents..."):
             t0 = time.time()
 
             from app.vectorstore.retriever import get_context_for_query
-            from app.llm.local_llm import generate_answer
+            from app.llm.local_llm import stream_answer
             from app.utils import truncate_contexts
             from app.retrieval.image_retriever import retrieve_images
 
@@ -118,31 +142,11 @@ if prompt := st.chat_input("Ask a question about your documents..."):
 
             t_retrieval = time.time()
 
-            placeholder.markdown("⏳ Generating answer with Mistral 7B...")
             context = "\n\n".join(documents)
-            answer = generate_answer(context, prompt)
+            placeholder.empty()
+            answer = st.write_stream(stream_answer(context, prompt))
 
             t_end = time.time()
-
-            # Also search images if relevant
-            images_out = []
-            try:
-                img_results = retrieve_images(prompt, top_k=3)
-                for doc, meta in zip(img_results["documents"], img_results["metadatas"]):
-                    if meta.get("modality") == "image":
-                        ip = meta.get("image_path", "")
-                        if os.path.exists(ip):
-                            images_out.append({"image_path": ip, "caption": doc})
-            except Exception:
-                pass
-
-            latency = {
-                "retrieval_sec": round(t_retrieval - t0, 1),
-                "generation_sec": round(t_end - t_retrieval, 1),
-                "total_sec": round(t_end - t0, 1),
-            }
-
-            placeholder.markdown(answer)
 
             n_show = min(top_k, len(contexts_out))
             with st.expander(f"📄 Retrieved {n_show} chunks"):

@@ -1,31 +1,35 @@
-# Models
+# Models (LLM Weights Binaries)
 models/*.gguf
 models/*.bin
+models/*.pt
+models/*.onnx
 
-# Data
+# Data & Upload Directories
+data/uploads/*
+!data/uploads/.gitkeep
+data/documents/*
+!data/documents/.gitkeep
+data/images/*
+!data/images/.gitkeep
 data/chroma_db/
-data/images/
 data/processed/
 
-# Reports
-reports/
-
-# Python
+# Python Cache
 __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
 *.egg
 
-# Environment
+# Virtual Environments
 .venv/
 venv/
 env/
 
-# IDE
+# IDE & OS Files
 .vscode/
 .idea/
-
-# OS
 Thumbs.db
 .DS_Store
+*.log
+*.tmp

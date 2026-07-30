@@ -1,9 +1,20 @@
+import os
+import sys
+
+if sys.platform == "win32":
+    cuda_path = r"C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.4\bin"
+    if os.path.exists(cuda_path):
+        try:
+            os.add_dll_directory(cuda_path)
+        except Exception:
+            pass
+
 import time
-from fastapi import FastAPI, HTTPException
+from typing import List, Optional
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, FileResponse
 from pydantic import BaseModel
-from typing import Optional
-from sse_starlette.sse import EventSourceResponse
 
 app = FastAPI(title="Multimodal RAG API", version="1.0.0")
 
@@ -14,6 +25,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+async def startup_event():
+    print("[INIT] Pre-loading AI models (Embeddings, Reranker, Mistral LLM) on server startup...")
+    from app.embeddings.embedder import embed_text
+    from app.retrieval.reranker import Reranker
+    from app.llm.local_llm import get_llm
+
+    Reranker.get_instance()
+    get_llm()
+    print("[INIT] ALL MODELS LOADED & READY FOR INSTANT QUERIES!")
 
 
 class QueryRequest(BaseModel):
@@ -47,12 +70,21 @@ def _get_models():
         from app.embeddings.embedder import embed_text
         _embedder = embed_text
     if _llm is None:
-        from app.llm.local_llm import llm as mistral_llm, generate_answer
+        from app.llm.local_llm import generate_answer
         _llm = generate_answer
     if _retriever is None:
         from app.vectorstore.retriever import get_context_for_query
         _retriever = get_context_for_query
     return _embedder, _llm, _retriever
+
+
+@app.get("/", response_class=HTMLResponse)
+async def serve_ui():
+    static_html = os.path.join(os.path.dirname(__file__), "static", "index.html")
+    if os.path.exists(static_html):
+        with open(static_html, "r", encoding="utf-8") as f:
+            return f.read()
+    return "<h1>Multimodal RAG API Running</h1>"
 
 
 @app.get("/health")
@@ -69,11 +101,11 @@ async def query(request: QueryRequest):
     t0 = time.time()
 
     if request.mode == "dense":
-        results = retrieve_fn(request.question, mode="dense")
+        results = retrieve_fn(request.question, mode="dense", top_k=request.top_k)
         documents = truncate_contexts(results["documents"][0])
         metadatas = results["metadatas"][0][: len(documents)]
     else:
-        results = retrieve_fn(request.question, mode=request.mode)
+        results = retrieve_fn(request.question, mode=request.mode, top_k=request.top_k)
         documents = truncate_contexts(results["documents"])
         metadatas = results["metadatas"][: len(documents)]
 
@@ -109,19 +141,21 @@ async def query(request: QueryRequest):
 @app.post("/query/stream")
 async def query_stream(request: QueryRequest):
     from app.utils import truncate_contexts
+    from app.llm.local_llm import stream_answer
+    import json
 
-    _, generate_answer_fn, retrieve_fn = _get_models()
+    _, _, retrieve_fn = _get_models()
 
     async def event_generator():
         t0 = time.time()
         yield {"event": "status", "data": "retrieving"}
 
         if request.mode == "dense":
-            results = retrieve_fn(request.question, mode="dense")
+            results = retrieve_fn(request.question, mode="dense", top_k=request.top_k)
             documents = truncate_contexts(results["documents"][0])
             metadatas = results["metadatas"][0][: len(documents)]
         else:
-            results = retrieve_fn(request.question, mode=request.mode)
+            results = retrieve_fn(request.question, mode=request.mode, top_k=request.top_k)
             documents = truncate_contexts(results["documents"])
             metadatas = results["metadatas"][: len(documents)]
 
@@ -137,48 +171,63 @@ async def query_stream(request: QueryRequest):
 
         yield {
             "event": "contexts",
-            "data": contexts_out,
+            "data": json.dumps(contexts_out),
         }
-
-        context = "\n\n".join(documents)
 
         yield {"event": "status", "data": "generating"}
 
-        answer = generate_answer_fn(context, request.question)
-        t_end = time.time()
+        context = "\n\n".join(documents)
+        for token in stream_answer(context, request.question):
+            yield {
+                "event": "token",
+                "data": token,
+            }
 
+        t_end = time.time()
         yield {
-            "event": "answer",
-            "data": {
-                "answer": answer,
-                "latencies": {
-                    "total_sec": round(t_end - t0, 2),
-                },
-            },
+            "event": "done",
+            "data": json.dumps({
+                "latency_sec": round(t_end - t0, 2)
+            })
         }
 
-        yield {"event": "done", "data": ""}
-
+    from sse_starlette.sse import EventSourceResponse
     return EventSourceResponse(event_generator())
 
 
+@app.post("/upload")
+async def upload_files(files: List[UploadFile] = File(...)):
+    from app.config import DOCUMENTS_DIR
+
+    os.makedirs(DOCUMENTS_DIR, exist_ok=True)
+    saved_files = []
+    for file in files:
+        file_path = os.path.join(DOCUMENTS_DIR, file.filename)
+        with open(file_path, "wb") as f:
+            f.write(await file.read())
+        saved_files.append(file.filename)
+
+    return {"status": "success", "saved_files": saved_files}
+
+
 @app.post("/ingest", response_model=IngestResponse)
-async def run_ingestion():
-    import subprocess
+async def run_ingestion_endpoint():
+    import asyncio
     import sys
 
     try:
-        result = subprocess.run(
-            [sys.executable, "main.py", "ingest"],
-            capture_output=True,
-            text=True,
-            timeout=600,
+        process = await asyncio.create_subprocess_exec(
+            sys.executable, "main.py", "ingest",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
         )
-        if result.returncode == 0:
+        stdout, stderr = await process.communicate()
+        if process.returncode == 0:
             return IngestResponse(status="success", message="Ingestion completed.")
         else:
+            err_msg = stderr.decode(errors="ignore")[-500:]
             return IngestResponse(
-                status="error", message=result.stderr[-500:]
+                status="error", message=err_msg
             )
     except Exception as e:
         return IngestResponse(status="error", message=str(e))

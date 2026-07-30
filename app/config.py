@@ -49,8 +49,8 @@ USE_DOCLING = False               # ~500MB model for advanced PDF layout analysi
 
 # LLM settings
 LLM_N_CTX = 2048
-LLM_N_THREADS = 8
-LLM_N_GPU_LAYERS = 0
+LLM_N_THREADS = max(1, min(4, (os.cpu_count() or 4)))
+LLM_N_GPU_LAYERS = -1
 LLM_MAX_TOKENS = 300
 LLM_TEMPERATURE = 0.2
 
@@ -59,4 +59,4 @@ PG_HOST = os.getenv("PG_HOST", "localhost")
 PG_PORT = int(os.getenv("PG_PORT", "5432"))
 PG_DB = os.getenv("PG_DB", "multimodal_rag")
 PG_USER = os.getenv("PG_USER", "postgres")
-PG_PASSWORD = os.getenv("PG_PASSWORD", "")
+PG_PASSWORD = os.getenv("PG_PASSWORD", "qwertghnm@123#")
